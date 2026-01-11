@@ -29,3 +29,6 @@ _(добавлю позже)_
 
 ## Статус
 Приложение опубликовано в RuStore. Дальнейшие улучшения — по мере необходимости.
+
+## Ссылка на RuStore
+https://www.rustore.ru/catalog/app/com.andre.fitnesstracker
