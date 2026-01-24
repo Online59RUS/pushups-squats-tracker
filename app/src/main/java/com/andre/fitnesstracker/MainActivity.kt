@@ -36,30 +36,13 @@ class MainActivity : ComponentActivity() {
 
         requestNotificationsPermission()
 
-        // Напоминания (до setContent)
-        ReminderScheduler.scheduleDaily(
-            context = this,
-            uniqueName = "reminder_morning",
-            hour = 8,
-            minute = 0,
-            session = "Утро"
-        )
-
-        ReminderScheduler.scheduleDaily(
-            context = this,
-            uniqueName = "reminder_evening",
-            hour = 21,
-            minute = 0,
-            session = "Вечер"
-        )
-
         setContent {
             FitnessTrackerTheme {
 
                 var showSplash by rememberSaveable { mutableStateOf(true) }
 
                 LaunchedEffect(Unit) {
-                    delay(1000) // 1 сек
+                    delay(700)
                     showSplash = false
                 }
 
@@ -69,6 +52,11 @@ class MainActivity : ComponentActivity() {
                     GradientBackground {
                         val vm: MainViewModel = viewModel()
                         val nav = rememberNavController()
+
+                        // Планируем напоминания по текущим настройкам (после старта UI)
+                        LaunchedEffect(Unit) {
+                            vm.rescheduleReminders()
+                        }
 
                         val items = listOf(
                             "today" to "Сегодня",

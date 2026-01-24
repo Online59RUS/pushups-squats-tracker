@@ -36,20 +36,27 @@ fun AnalyticsScreen(vm: MainViewModel) {
         labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    val days = remember(range) { buildLastDays(range.days) }
+    // X-ось:
+    // - 7/31: список дней
+    // - год: список месяцев
+    val xKeys: List<String> = remember(range) {
+        if (range == Range.D365) buildLastMonths(12) else buildLastDays(range.days)
+    }
 
     val totals: List<Int> = remember(ui.entries, exercise, range, part) {
         val map = mutableMapOf<String, Int>()
-        for (k in days) map[k] = 0
+        xKeys.forEach { map[it] = 0 }
 
         ui.entries.forEach { e ->
             if (e.exercise != exercise) return@forEach
             if (part == Part.MORNING && e.session != "Утро") return@forEach
             if (part == Part.EVENING && e.session != "Вечер") return@forEach
-            val key = dayKey(e.timestampMs)
+
+            val key = if (range == Range.D365) monthKey(e.timestampMs) else dayKey(e.timestampMs)
             if (map.containsKey(key)) map[key] = (map[key] ?: 0) + e.amount
         }
-        days.map { d -> map[d] ?: 0 }
+
+        xKeys.map { k -> map[k] ?: 0 }
     }
 
     val sum = totals.sum()
@@ -60,7 +67,11 @@ fun AnalyticsScreen(vm: MainViewModel) {
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Аналитика", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+        Text(
+            "Аналитика",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = range == Range.D7, onClick = { range = Range.D7 }, label = { Text("7 дней") }, colors = chipColors)
@@ -88,28 +99,32 @@ fun AnalyticsScreen(vm: MainViewModel) {
                 Part.EVENING -> "Вечер"
             }
             Text("Сумма за период ($partTitle): $sum", color = MaterialTheme.colorScheme.onBackground)
-            Text("Максимум за день ($partTitle): $maxV", color = MaterialTheme.colorScheme.onBackground)
-            Text("Среднее в день ($partTitle): ${"%.1f".format(avg)}", color = MaterialTheme.colorScheme.onBackground)
+            Text("Максимум (${if (range == Range.D365) "за месяц" else "за день"}): $maxV", color = MaterialTheme.colorScheme.onBackground)
+            Text("Среднее (${if (range == Range.D365) "в месяц" else "в день"}): ${"%.1f".format(avg)}", color = MaterialTheme.colorScheme.onBackground)
         }
 
         BarChart(
             values = totals,
-            dayKeys = days,
-            rangeDays = range.days,
+            xKeys = xKeys,
+            range = range,
             barColor = MaterialTheme.colorScheme.primary,
             labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().height(240.dp)
         )
 
-        Text("Тап по столбику добавим позже.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Тап по столбику добавим позже.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
 private fun BarChart(
     values: List<Int>,
-    dayKeys: List<String>,
-    rangeDays: Int,
+    xKeys: List<String>,
+    range: Range,
     barColor: Color,
     labelColor: Color,
     modifier: Modifier = Modifier
@@ -118,7 +133,9 @@ private fun BarChart(
 
     Canvas(modifier = modifier) {
         val n = values.size.coerceAtLeast(1)
-        val gap = 6f
+
+        // Для "Год" делаем gap меньше, чтобы было плотнее и красивее
+        val gap = if (range == Range.D365) 10f else 6f
         val labelArea = 28f
         val chartH = (size.height - labelArea).coerceAtLeast(1f)
         val barW = ((size.width - gap * (n - 1)) / n).coerceAtLeast(1f)
@@ -129,7 +146,7 @@ private fun BarChart(
             drawRect(color = barColor, topLeft = Offset(x, chartH - h), size = Size(barW, h))
         }
 
-        val labels = buildXAxisLabels(dayKeys, rangeDays)
+        val labels = buildXAxisLabels(xKeys, range)
 
         drawIntoCanvas { canvas ->
             val paint = android.graphics.Paint().apply {
@@ -148,12 +165,20 @@ private fun BarChart(
     }
 }
 
+// ---------- keys ----------
 private fun dayKey(timestampMs: Long): String {
     val c = Calendar.getInstance().apply { timeInMillis = timestampMs }
     val y = c.get(Calendar.YEAR)
     val m = c.get(Calendar.MONTH) + 1
     val d = c.get(Calendar.DAY_OF_MONTH)
     return "%04d-%02d-%02d".format(y, m, d)
+}
+
+private fun monthKey(timestampMs: Long): String {
+    val c = Calendar.getInstance().apply { timeInMillis = timestampMs }
+    val y = c.get(Calendar.YEAR)
+    val m = c.get(Calendar.MONTH) + 1
+    return "%04d-%02d".format(y, m)
 }
 
 private fun buildLastDays(days: Int): List<String> {
@@ -175,21 +200,43 @@ private fun buildLastDays(days: Int): List<String> {
     return list
 }
 
-private fun buildXAxisLabels(dayKeys: List<String>, rangeDays: Int): List<String?> =
-    when (rangeDays) {
-        7 -> dayKeys.map { weekdayShort(it) }
-        31 -> dayKeys.mapIndexed { i, key ->
+private fun buildLastMonths(months: Int): List<String> {
+    val list = ArrayList<String>(months)
+    val c = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    c.add(Calendar.MONTH, -(months - 1))
+    repeat(months) {
+        val y = c.get(Calendar.YEAR)
+        val m = c.get(Calendar.MONTH) + 1
+        list.add("%04d-%02d".format(y, m))
+        c.add(Calendar.MONTH, 1)
+    }
+    return list
+}
+
+// ---------- labels ----------
+private fun buildXAxisLabels(xKeys: List<String>, range: Range): List<String?> =
+    when (range) {
+        Range.D7 -> xKeys.map { weekdayShort(it) }
+        Range.D31 -> xKeys.mapIndexed { i, key ->
             val day = key.takeLast(2)
-            if (i == 0 || i == dayKeys.lastIndex || i % 5 == 0) day else null
+            if (i == 0 || i == xKeys.lastIndex || i % 5 == 0) day else null
         }
-        else -> dayKeys.mapIndexed { i, key ->
-            val dd = key.takeLast(2)
-            val mm = key.substring(5, 7)
-            if (i == 0 || i == dayKeys.lastIndex || dd == "01") monthShort(mm) else null
+        Range.D365 -> xKeys.mapIndexed { i, key ->
+            // key = YYYY-MM
+            val mm = key.takeLast(2)
+            // показываем подписи разреженно, чтобы не было каши
+            if (i == 0 || i == xKeys.lastIndex || i % 2 == 0) monthShort(mm) else null
         }
     }
 
 private fun weekdayShort(key: String): String {
+    // key = YYYY-MM-DD
     val y = key.substring(0, 4).toInt()
     val m = key.substring(5, 7).toInt()
     val d = key.substring(8, 10).toInt()

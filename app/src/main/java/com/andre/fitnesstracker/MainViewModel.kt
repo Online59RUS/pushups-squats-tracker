@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.Calendar
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -25,7 +24,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             repo.observeAll().collect { list ->
                 _ui.update { it.copy(entries = list) }
                 refreshTotals()
-                recomputeStreakFromEntries(list) // ✅ ВАЖНО: серия по фактическим записям
+                recomputeStreakFromEntries(list)
             }
         }
 
@@ -45,6 +44,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _ui.update { it.copy(goalSquats = g) }
             }
         }
+
+        // времена напоминаний
+        viewModelScope.launch { prefs.morningHourFlow.collect { h -> _ui.update { it.copy(morningHour = h) } } }
+        viewModelScope.launch { prefs.morningMinFlow.collect { m -> _ui.update { it.copy(morningMin = m) } } }
+        viewModelScope.launch { prefs.eveningHourFlow.collect { h -> _ui.update { it.copy(eveningHour = h) } } }
+        viewModelScope.launch { prefs.eveningMinFlow.collect { m -> _ui.update { it.copy(eveningMin = m) } } }
     }
 
     private fun refreshTotals() {
@@ -60,10 +65,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setAmountText(v: String) = _ui.update { it.copy(amountText = v) }
 
     fun setSelectedDay(ms: Long) = _ui.update { it.copy(selectedDayMs = ms) }
-    fun setToday() = _ui.update { it.copy(selectedDayMs = startOfDayMs(System.currentTimeMillis())) }
+    fun setToday() = _ui.update { it.copy(selectedDayMs = DateUtils.startOfDayMs(System.currentTimeMillis())) }
 
     fun setYesterday() = _ui.update {
-        val todayStart = startOfDayMs(System.currentTimeMillis())
+        val todayStart = DateUtils.startOfDayMs(System.currentTimeMillis())
         it.copy(selectedDayMs = todayStart - 24L * 60 * 60 * 1000)
     }
 
@@ -79,6 +84,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setGoalSquats(v) }
     }
 
+    fun setMorningTime(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            prefs.setMorningTime(hour, minute)
+            rescheduleReminders()
+        }
+    }
+
+    fun setEveningTime(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            prefs.setEveningTime(hour, minute)
+            rescheduleReminders()
+        }
+    }
+
+    fun rescheduleReminders() {
+        val s = _ui.value
+        ReminderScheduler.scheduleAll(
+            context = getApplication(),
+            morningH = s.morningHour,
+            morningM = s.morningMin,
+            eveningH = s.eveningHour,
+            eveningM = s.eveningMin
+        )
+    }
+
     fun addExerciseIfValid(dateMs: Long) {
         val ex = _ui.value.selectedExercise
         val session = _ui.value.session
@@ -89,11 +119,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 exercise = ex,
                 amount = amount,
                 session = session,
-                timestampMs = dateMs // ✅ сохраняем выбранную дату
+                timestampMs = dateMs
             )
             _ui.update { it.copy(amountText = "") }
             refreshTotals()
-            // серию пересчитает observeAll() (после вставки запись прилетит из Room)
+        }
+    }
+
+    fun deleteEntry(id: Long) {
+        viewModelScope.launch {
+            repo.delete(id)
+            refreshTotals()
+        }
+    }
+
+    fun updateEntry(entry: ExerciseEntry) {
+        viewModelScope.launch {
+            repo.update(entry)
+            refreshTotals()
         }
     }
 
@@ -110,43 +153,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return AchievementRules.build(exercise, total)
     }
 
-    // -------------------- СЕРИЯ --------------------
-    // День "засчитан", если в этот день есть И отжимания, И приседания (любая сессия).
+    // streak: день засчитан, если есть И отжимания И приседания в этот день (любые сессии)
     private fun recomputeStreakFromEntries(entries: List<ExerciseEntry>) {
-        val todayStart = startOfDayMs(System.currentTimeMillis())
+        val todayStart = DateUtils.startOfDayMs(System.currentTimeMillis())
 
-        // dayStart -> набор упражнений, которые были в этот день
-        val dayToExercises: Map<Long, Set<String>> = entries
-            .groupBy { startOfDayMs(it.timestampMs) }
+        val byDay: Map<Long, Set<String>> = entries
+            .groupBy { DateUtils.startOfDayMs(it.timestampMs) }
             .mapValues { (_, list) -> list.map { it.exercise }.toSet() }
 
-        fun dayIsComplete(dayStartMs: Long): Boolean {
-            val set = dayToExercises[dayStartMs] ?: emptySet()
+        fun isDayDone(dayStart: Long): Boolean {
+            val set = byDay[dayStart] ?: emptySet()
             return set.contains("Отжимания") && set.contains("Приседания")
         }
 
         var streak = 0
         var cur = todayStart
-        while (dayIsComplete(cur)) {
+        while (isDayDone(cur)) {
             streak++
             cur -= 24L * 60 * 60 * 1000
         }
 
         _ui.update {
             it.copy(
-                todayDone = dayIsComplete(todayStart),
+                todayDone = isDayDone(todayStart),
                 streakDays = streak
             )
         }
-    }
-
-    // -------------------- utils --------------------
-    private fun startOfDayMs(ts: Long): Long {
-        val c = Calendar.getInstance().apply { timeInMillis = ts }
-        c.set(Calendar.HOUR_OF_DAY, 0)
-        c.set(Calendar.MINUTE, 0)
-        c.set(Calendar.SECOND, 0)
-        c.set(Calendar.MILLISECOND, 0)
-        return c.timeInMillis
     }
 }

@@ -7,16 +7,27 @@ plugins {
 
 android {
     namespace = "com.andre.fitnesstracker"
-    compileSdk {
-        version = release(36)
+
+    compileSdk = 36
+
+    // --- Версии (меняешь только versionName) ---
+    val versionNameValue = "1.0.3"
+    fun versionCodeFrom(name: String): Int {
+        val parts = name.split(".").map { it.toIntOrNull() ?: 0 }
+        val major = parts.getOrElse(0) { 0 }
+        val minor = parts.getOrElse(1) { 0 }
+        val patch = parts.getOrElse(2) { 0 }
+        // 1.0.3 -> 103 (под твою логику)
+        return major * 100 + minor * 10 + patch
     }
 
     defaultConfig {
         applicationId = "com.andre.fitnesstracker"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.2"
+
+        versionName = versionNameValue
+        versionCode = versionCodeFrom(versionNameValue)
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -28,16 +39,21 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Если ты реально подписываешь релиз debug-ключом — ок.
+            // Для RuStore лучше потом сделать отдельный release keystore.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
     }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -56,23 +72,21 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // 🔴 ВАЖНО
+    // Compose + lifecycle (оставляем ОДНУ версию)
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
-
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.0")
 
     // ViewModel
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // DataStore (UserPrefs)
+    // DataStore (если ты реально используешь)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // WorkManager

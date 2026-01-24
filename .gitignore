@@ -18,3 +18,8 @@ local.properties
 *.jks
 *.keystore
 pushups_squats_keystore
+
+# Release artifacts
+app/release/
+*.apk
+*.aab
