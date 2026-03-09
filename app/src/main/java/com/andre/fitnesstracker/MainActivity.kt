@@ -67,10 +67,10 @@ class MainActivity : ComponentActivity() {
                         )
 
                         Scaffold(
-                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            containerColor = MaterialTheme.colorScheme.background,
                             bottomBar = {
                                 NavigationBar(
-                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.25f)
+                                    containerColor = MaterialTheme.colorScheme.surface
                                 ) {
                                     val currentBackStack by nav.currentBackStackEntryAsState()
                                     val route = currentBackStack?.destination?.route
