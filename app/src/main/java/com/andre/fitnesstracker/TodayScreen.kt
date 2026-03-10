@@ -16,7 +16,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,12 +32,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.andre.fitnesstracker.ui.theme.GlassCard
 import com.andre.fitnesstracker.ui.theme.GlassOutlinedButton
 import java.util.Calendar
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TodayScreen(vm: MainViewModel) {
     val ui by vm.ui.collectAsState()
@@ -55,17 +55,15 @@ fun TodayScreen(vm: MainViewModel) {
     }
 
     val chipColors = FilterChipDefaults.filterChipColors(
-        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
         selectedLabelColor = MaterialTheme.colorScheme.onBackground,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        containerColor = MaterialTheme.colorScheme.surface,
         labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // Диапазон выбранного дня
     val dayStart = ui.selectedDayMs
     val dayEnd = dayStart + 24L * 60 * 60 * 1000
 
-    // Утро/Вечер по выбранной дате и упражнению
     val (morningSum, eveningSum) = remember(ui.entries, ui.selectedDayMs, ui.selectedExercise) {
         var m = 0
         var e = 0
@@ -82,7 +80,6 @@ fun TodayScreen(vm: MainViewModel) {
         m to e
     }
 
-    // Факт за день (включая записи "без метки")
     val factDay = remember(ui.entries, ui.selectedDayMs, ui.selectedExercise) {
         ui.entries
             .asSequence()
@@ -91,7 +88,6 @@ fun TodayScreen(vm: MainViewModel) {
             .sumOf { it.amount }
     }
 
-    // План (цель на день) для выбранного упражнения
     val planDay = remember(ui.goalPushups, ui.goalSquats, ui.selectedExercise) {
         vm.goalFor(ui.selectedExercise)
     }
@@ -99,7 +95,6 @@ fun TodayScreen(vm: MainViewModel) {
     val leftDay = (planDay - factDay).coerceAtLeast(0)
     val progress = if (planDay <= 0) 0f else (factDay.toFloat() / planDay.toFloat()).coerceIn(0f, 1f)
 
-    // Итого за всё время + до следующей медали (без unlocked)
     val totalAllTime = ui.totals[ui.selectedExercise] ?: 0
     val nextThreshold = remember(totalAllTime, ui.selectedExercise, ui.totals) {
         vm.achievementsFor(ui.selectedExercise)
@@ -113,32 +108,124 @@ fun TodayScreen(vm: MainViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scroll)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            "Сегодня",
+            text = "Сегодня",
             style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        // Серия / статус (пока просто выводим как есть из UiState)
+        Text(
+            text = "Текущий фокус - ${ui.selectedExercise.lowercase()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         GlassCard(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Серия: ${ui.streakDays} дн.",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column {
+                        Text(
+                            text = "${ui.streakDays}",
+                            style = MaterialTheme.typography.displaySmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "дней серии",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Text(
+                        text = dateText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
-                Text("• Сегодня", color = MaterialTheme.colorScheme.onBackground)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    StatMini("План", "$planDay")
+                    StatMini("Факт", "$factDay")
+                    StatMini("Осталось", "$leftDay")
+                }
             }
         }
 
-        // Сессия
+        Text(
+            text = "Упражнение",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium
+        )
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ui.exercises.forEach { ex ->
+                FilterChip(
+                    selected = ui.selectedExercise == ex,
+                    onClick = { vm.setExercise(ex) },
+                    label = { Text(ex) },
+                    colors = chipColors
+                )
+            }
+        }
+
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = ui.selectedExercise,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    text = "За выбранную дату",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    StatMini("Утро", "$morningSum")
+                    StatMini("Вечер", "$eveningSum")
+                    StatMini("Всего", "$factDay")
+                }
+            }
+        }
+
+        Text(
+            text = "Сессия",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium
+        )
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = ui.session == "Утро",
@@ -160,35 +247,17 @@ fun TodayScreen(vm: MainViewModel) {
             )
         }
 
-        // Упражнение
         Text(
-            "Упражнение",
+            text = "Дата",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ui.exercises.forEach { ex ->
-                FilterChip(
-                    selected = ui.selectedExercise == ex,
-                    onClick = { vm.setExercise(ex) },
-                    label = { Text(ex) },
-                    colors = chipColors
-                )
-            }
-        }
-
-        // Дата + кнопки
-        Text(
-            "Дата: $dateText",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium
         )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
             GlassOutlinedButton(
                 modifier = Modifier.weight(1f),
                 text = "Сегодня",
@@ -225,74 +294,34 @@ fun TodayScreen(vm: MainViewModel) {
             ) { Text("Выбрать") }
         }
 
-        // Цель на день (вариант A)
         GlassCard(Modifier.fillMaxWidth()) {
-            Text(
-                "Цель на день",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("План", color = MaterialTheme.colorScheme.onBackground)
-                Text("$planDay", color = MaterialTheme.colorScheme.onBackground)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Факт", color = MaterialTheme.colorScheme.onBackground)
-                Text("$factDay", color = MaterialTheme.colorScheme.onBackground)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Осталось", color = MaterialTheme.colorScheme.onBackground)
-                Text("$leftDay", color = MaterialTheme.colorScheme.onBackground)
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f)
-            )
-
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("• Утро", color = MaterialTheme.colorScheme.onBackground)
-                Text("$morningSum", color = MaterialTheme.colorScheme.onBackground)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("• Вечер", color = MaterialTheme.colorScheme.onBackground)
-                Text("$eveningSum", color = MaterialTheme.colorScheme.onBackground)
-            }
-
-            Text(
-                "Считаем по выбранному упражнению и дате.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        // Итого по упражнению + до следующей медали
-        GlassCard(Modifier.fillMaxWidth()) {
-            Text(
-                "Итого по \"${ui.selectedExercise}\": $totalAllTime",
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            if (nextThreshold != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "До следующей медали осталось: $leftToNext",
+                    text = "Прогресс по ${ui.selectedExercise.lowercase()}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = "Итого: $totalAllTime",
                     color = MaterialTheme.colorScheme.onBackground
                 )
-            } else {
-                Text("Все медали получены 🎉", color = MaterialTheme.colorScheme.onBackground)
+
+                if (nextThreshold != null) {
+                    Text(
+                        text = "До следующей медали: $leftToNext",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        text = "Все медали получены 🎉",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
-        // Ввод + сброс
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -320,7 +349,6 @@ fun TodayScreen(vm: MainViewModel) {
             }
         }
 
-        // Быстрые кнопки
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
@@ -339,13 +367,35 @@ fun TodayScreen(vm: MainViewModel) {
             }
         }
 
-        // Сохранить (важно: передаем выбранную дату)
         Button(
             onClick = { vm.addExerciseIfValid(ui.selectedDayMs) },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Сохранить") }
+        ) {
+            Text("Сохранить")
+        }
 
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun StatMini(
+    title: String,
+    value: String
+) {
+    Column {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
@@ -358,9 +408,9 @@ private fun QuickAddButton(
     OutlinedButton(
         onClick = onClick,
         modifier = modifier,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+            containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onBackground
         )
     ) {
