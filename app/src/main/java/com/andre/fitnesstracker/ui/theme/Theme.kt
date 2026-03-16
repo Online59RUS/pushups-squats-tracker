@@ -1,20 +1,24 @@
 package com.andre.fitnesstracker.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
-private val LightColors = lightColorScheme(
-    primary = AccentPrimary,
-    secondary = AccentSecondary,
+private val AppColorScheme = darkColorScheme(
+    primary = Accent,
+    onPrimary = Color.White,
+
     background = AppBackground,
-    surface = CardBackground,
-    surfaceVariant = CardBackground,
-    onPrimary = CardBackground,
-    onSecondary = CardBackground,
     onBackground = TextPrimary,
+
+    surface = CardBackground,
     onSurface = TextPrimary,
-    onSurfaceVariant = TextSecondary
+
+    surfaceVariant = CardBackground,
+    onSurfaceVariant = TextSecondary,
+
+    outline = Divider
 )
 
 @Composable
@@ -22,7 +26,7 @@ fun FitnessTrackerTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = LightColors,
+        colorScheme = AppColorScheme,
         typography = Typography,
         content = content
     )

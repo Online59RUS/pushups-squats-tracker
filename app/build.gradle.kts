@@ -11,14 +11,14 @@ android {
     compileSdk = 36
 
     // --- Версии (меняешь только versionName) ---
-    val versionNameValue = "1.0.3"
+    val versionNameValue = "2.0.0"
     fun versionCodeFrom(name: String): Int {
         val parts = name.split(".").map { it.toIntOrNull() ?: 0 }
         val major = parts.getOrElse(0) { 0 }
         val minor = parts.getOrElse(1) { 0 }
         val patch = parts.getOrElse(2) { 0 }
         // 1.0.3 -> 103 (под твою логику)
-        return major * 100 + minor * 10 + patch
+        return major * 10000 + minor * 100 + patch
     }
 
     defaultConfig {

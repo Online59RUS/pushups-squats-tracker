@@ -1,7 +1,7 @@
 package com.andre.fitnesstracker
 
 import android.app.DatePickerDialog
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -12,15 +12,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -31,11 +29,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.andre.fitnesstracker.ui.theme.GlassCard
-import com.andre.fitnesstracker.ui.theme.GlassOutlinedButton
+import com.andre.fitnesstracker.ui.theme.PrimaryActionButton
+import com.andre.fitnesstracker.ui.theme.SecondaryActionButton
 import java.util.Calendar
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -54,6 +56,21 @@ fun TodayScreen(vm: MainViewModel) {
         )
     }
 
+    val availableExercises = remember(ui.seriesMode) {
+        when (ui.seriesMode) {
+            "pushups" -> listOf("Отжимания")
+            "squats" -> listOf("Приседания")
+            else -> listOf("Отжимания", "Приседания")
+        }
+    }
+
+    val currentExercise = remember(ui.selectedExercise, ui.seriesMode) {
+        when {
+            ui.selectedExercise in availableExercises -> ui.selectedExercise
+            else -> availableExercises.first()
+        }
+    }
+
     val chipColors = FilterChipDefaults.filterChipColors(
         selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
         selectedLabelColor = MaterialTheme.colorScheme.onBackground,
@@ -64,12 +81,12 @@ fun TodayScreen(vm: MainViewModel) {
     val dayStart = ui.selectedDayMs
     val dayEnd = dayStart + 24L * 60 * 60 * 1000
 
-    val (morningSum, eveningSum) = remember(ui.entries, ui.selectedDayMs, ui.selectedExercise) {
+    val (morningSum, eveningSum) = remember(ui.entries, ui.selectedDayMs, currentExercise) {
         var m = 0
         var e = 0
         ui.entries.forEach { entry ->
             val inDay = entry.timestampMs in dayStart until dayEnd
-            val sameExercise = entry.exercise == ui.selectedExercise
+            val sameExercise = entry.exercise == currentExercise
             if (!inDay || !sameExercise) return@forEach
 
             when (entry.session) {
@@ -80,24 +97,30 @@ fun TodayScreen(vm: MainViewModel) {
         m to e
     }
 
-    val factDay = remember(ui.entries, ui.selectedDayMs, ui.selectedExercise) {
+    val factDay = remember(ui.entries, ui.selectedDayMs, currentExercise) {
         ui.entries
             .asSequence()
-            .filter { it.exercise == ui.selectedExercise }
+            .filter { it.exercise == currentExercise }
             .filter { it.timestampMs in dayStart until dayEnd }
             .sumOf { it.amount }
     }
 
-    val planDay = remember(ui.goalPushups, ui.goalSquats, ui.selectedExercise) {
-        vm.goalFor(ui.selectedExercise)
-    }
-
+    val planDay = vm.goalFor(currentExercise)
     val leftDay = (planDay - factDay).coerceAtLeast(0)
-    val progress = if (planDay <= 0) 0f else (factDay.toFloat() / planDay.toFloat()).coerceIn(0f, 1f)
+    val progressDay = if (planDay <= 0) 0f else (factDay.toFloat() / planDay.toFloat()).coerceIn(0f, 1f)
 
-    val totalAllTime = ui.totals[ui.selectedExercise] ?: 0
-    val nextThreshold = remember(totalAllTime, ui.selectedExercise, ui.totals) {
-        vm.achievementsFor(ui.selectedExercise)
+    val level = vm.currentStrengthLevel()
+    val strengthPair = vm.currentStrengthProgress()
+    val currentStrengthDays = strengthPair.first
+    val targetStrengthDays = strengthPair.second
+    val strengthProgress =
+        if (targetStrengthDays <= 0) 0f
+        else (currentStrengthDays.toFloat() / targetStrengthDays.toFloat()).coerceIn(0f, 1f)
+    val daysToNext = vm.daysToNextLevel()
+
+    val totalAllTime = ui.totals[currentExercise] ?: 0
+    val nextThreshold = remember(totalAllTime, currentExercise) {
+        vm.achievementsFor(currentExercise)
             .map { it.threshold }
             .sorted()
             .firstOrNull { it > totalAllTime }
@@ -118,11 +141,87 @@ fun TodayScreen(vm: MainViewModel) {
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Text(
-            text = "Текущий фокус - ${ui.selectedExercise.lowercase()}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "СИЛА",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Bold
+                )
+
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.size(96.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(level.iconRes),
+                        contentDescription = level.name,
+                        modifier = Modifier.matchParentSize(),
+                        alpha = 0.18f
+                    )
+
+                    Image(
+                        painter = painterResource(level.iconRes),
+                        contentDescription = level.name,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .drawWithContent {
+                                val clipTop = size.height * (1f - strengthProgress)
+                                clipRect(
+                                    left = 0f,
+                                    top = clipTop,
+                                    right = size.width,
+                                    bottom = size.height
+                                ) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
+                    )
+                }
+
+                Text(
+                    text = "Уровень: ${level.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    text = "🔥 Серия: ${ui.streakDays} дней",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                LinearProgressIndicator(
+                    progress = { strengthProgress },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (level.toDays == Int.MAX_VALUE) {
+                    Text(
+                        text = "Максимальный уровень",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        text = "$currentStrengthDays / $targetStrengthDays дней",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (daysToNext > 0) {
+                    Text(
+                        text = "До следующего уровня: $daysToNext дней",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
 
         GlassCard(Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -133,32 +232,35 @@ fun TodayScreen(vm: MainViewModel) {
                 ) {
                     Column {
                         Text(
-                            text = "${ui.streakDays}",
-                            style = MaterialTheme.typography.displaySmall,
+                            text = dateText,
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "дней серии",
+                            text = currentExercise,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     Text(
-                        text = dateText,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = when (ui.seriesMode) {
+                            "pushups" -> "Режим: отжимания"
+                            "squats" -> "Режим: приседания"
+                            else -> "Режим: оба"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 LinearProgressIndicator(
-                    progress = { progress },
+                    progress = { progressDay },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 Row(
@@ -169,44 +271,6 @@ fun TodayScreen(vm: MainViewModel) {
                     StatMini("Факт", "$factDay")
                     StatMini("Осталось", "$leftDay")
                 }
-            }
-        }
-
-        Text(
-            text = "Упражнение",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.Medium
-        )
-
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ui.exercises.forEach { ex ->
-                FilterChip(
-                    selected = ui.selectedExercise == ex,
-                    onClick = { vm.setExercise(ex) },
-                    label = { Text(ex) },
-                    colors = chipColors
-                )
-            }
-        }
-
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = ui.selectedExercise,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                Text(
-                    text = "За выбранную дату",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -215,6 +279,29 @@ fun TodayScreen(vm: MainViewModel) {
                     StatMini("Утро", "$morningSum")
                     StatMini("Вечер", "$eveningSum")
                     StatMini("Всего", "$factDay")
+                }
+            }
+        }
+
+        if (ui.seriesMode == "both") {
+            Text(
+                text = "Упражнение",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Medium
+            )
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                availableExercises.forEach { ex ->
+                    FilterChip(
+                        selected = currentExercise == ex,
+                        onClick = { vm.setExercise(ex) },
+                        label = { Text(ex) },
+                        colors = chipColors
+                    )
                 }
             }
         }
@@ -258,17 +345,21 @@ fun TodayScreen(vm: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            GlassOutlinedButton(
-                modifier = Modifier.weight(1f),
+            SecondaryActionButton(
                 text = "Сегодня",
+                modifier = Modifier.weight(1f),
                 onClick = { vm.setToday() }
             )
-            GlassOutlinedButton(
-                modifier = Modifier.weight(1f),
+
+            SecondaryActionButton(
                 text = "Вчера",
+                modifier = Modifier.weight(1f),
                 onClick = { vm.setYesterday() }
             )
-            Button(
+
+            PrimaryActionButton(
+                text = "Выбрать",
+                modifier = Modifier.weight(1f),
                 onClick = {
                     val cal = Calendar.getInstance().apply { timeInMillis = ui.selectedDayMs }
                     DatePickerDialog(
@@ -289,15 +380,14 @@ fun TodayScreen(vm: MainViewModel) {
                         cal.get(Calendar.MONTH),
                         cal.get(Calendar.DAY_OF_MONTH)
                     ).show()
-                },
-                modifier = Modifier.weight(1f)
-            ) { Text("Выбрать") }
+                }
+            )
         }
 
         GlassCard(Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Прогресс по ${ui.selectedExercise.lowercase()}",
+                    text = "Прогресс по ${currentExercise.lowercase()}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Medium
@@ -310,12 +400,12 @@ fun TodayScreen(vm: MainViewModel) {
 
                 if (nextThreshold != null) {
                     Text(
-                        text = "До следующей медали: $leftToNext",
+                        text = "До следующей цели: $leftToNext",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
                     Text(
-                        text = "Все медали получены 🎉",
+                        text = "Все цели выполнены 🎉",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -345,7 +435,7 @@ fun TodayScreen(vm: MainViewModel) {
             )
 
             TextButton(onClick = { vm.setAmountText("") }) {
-                Text("Сброс", color = MaterialTheme.colorScheme.onBackground)
+                Text("Сброс")
             }
         }
 
@@ -357,22 +447,23 @@ fun TodayScreen(vm: MainViewModel) {
                 val cur = ui.amountText.toIntOrNull() ?: 0
                 vm.setAmountText((cur + 5).toString())
             }
+
             QuickAddButton("+10", Modifier.weight(1f)) {
                 val cur = ui.amountText.toIntOrNull() ?: 0
                 vm.setAmountText((cur + 10).toString())
             }
+
             QuickAddButton("+20", Modifier.weight(1f)) {
                 val cur = ui.amountText.toIntOrNull() ?: 0
                 vm.setAmountText((cur + 20).toString())
             }
         }
 
-        Button(
-            onClick = { vm.addExerciseIfValid(ui.selectedDayMs) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Сохранить")
-        }
+        PrimaryActionButton(
+            text = "Сохранить",
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { vm.addExerciseIfValid(ui.selectedDayMs) }
+        )
 
         Spacer(Modifier.height(8.dp))
     }
@@ -389,7 +480,9 @@ private fun StatMini(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
         Spacer(modifier = Modifier.height(2.dp))
+
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
@@ -405,15 +498,9 @@ private fun QuickAddButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    OutlinedButton(
-        onClick = onClick,
+    SecondaryActionButton(
+        text = label,
         modifier = modifier,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onBackground
-        )
-    ) {
-        Text(label)
-    }
+        onClick = onClick
+    )
 }

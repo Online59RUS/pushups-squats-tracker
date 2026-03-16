@@ -2,11 +2,34 @@ package com.andre.fitnesstracker
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -16,9 +39,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.andre.fitnesstracker.ui.theme.GlassCard
-import com.andre.fitnesstracker.ui.theme.GlassOutlinedButton
+import com.andre.fitnesstracker.ui.theme.PrimaryActionButton
+import com.andre.fitnesstracker.ui.theme.SecondaryActionButton
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,29 +53,33 @@ fun HistoryScreen(vm: MainViewModel) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
 
-    // --- Фильтры ---
     var exerciseFilter by remember { mutableStateOf("Все") }
     var dateFilterMs by remember { mutableStateOf<Long?>(null) }
 
-    // --- Меню (лонг-тап) ---
     var menuForId by remember { mutableStateOf<Long?>(null) }
     var menuOffset by remember { mutableStateOf(DpOffset(0.dp, 0.dp)) }
 
-    // --- Диалоги ---
     var editEntry by remember { mutableStateOf<ExerciseEntry?>(null) }
     var deleteEntry by remember { mutableStateOf<ExerciseEntry?>(null) }
 
     val dayFmt = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
-    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+
+    val availableExercises = remember(ui.seriesMode) {
+        when (ui.seriesMode) {
+            "pushups" -> listOf("Отжимания")
+            "squats" -> listOf("Приседания")
+            else -> listOf("Отжимания", "Приседания")
+        }
+    }
 
     val chipColors = FilterChipDefaults.filterChipColors(
-        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
         selectedLabelColor = MaterialTheme.colorScheme.onBackground,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        containerColor = MaterialTheme.colorScheme.surface,
         labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    val filtered = remember(ui.entries, exerciseFilter, dateFilterMs) {
+    val filtered = remember(ui.entries, exerciseFilter, dateFilterMs, ui.seriesMode) {
         ui.entries
             .asSequence()
             .filter { e ->
@@ -58,6 +88,11 @@ fun HistoryScreen(vm: MainViewModel) {
                     "Приседания" -> e.exercise == "Приседания"
                     else -> true
                 }
+            }
+            .filter { e ->
+                if (ui.seriesMode == "pushups" && e.exercise != "Отжимания") return@filter false
+                if (ui.seriesMode == "squats" && e.exercise != "Приседания") return@filter false
+                true
             }
             .filter { e ->
                 val dayStart = DateUtils.startOfDayMs(e.timestampMs)
@@ -71,18 +106,111 @@ fun HistoryScreen(vm: MainViewModel) {
         if (dateFilterMs == null) "Все" else dayFmt.format(Date(dateFilterMs!!))
     }
 
-    // ====== UI ======
     Column(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            "История",
+            text = "История",
             style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.SemiBold
         )
+
+        Text(
+            text = "Все сохранённые записи по упражнениям",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Фильтры",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = exerciseFilter == "Все",
+                        onClick = { exerciseFilter = "Все" },
+                        label = { Text("Все") },
+                        colors = chipColors
+                    )
+
+                    if ("Отжимания" in availableExercises) {
+                        FilterChip(
+                            selected = exerciseFilter == "Отжимания",
+                            onClick = { exerciseFilter = "Отжимания" },
+                            label = { Text("Отжимания") },
+                            colors = chipColors
+                        )
+                    }
+
+                    if ("Приседания" in availableExercises) {
+                        FilterChip(
+                            selected = exerciseFilter == "Приседания",
+                            onClick = { exerciseFilter = "Приседания" },
+                            label = { Text("Приседания") },
+                            colors = chipColors
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SecondaryActionButton(
+                        text = "Все даты",
+                        modifier = Modifier.weight(1f),
+                        onClick = { dateFilterMs = null }
+                    )
+
+                    PrimaryActionButton(
+                        text = "Выбрать",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            val cal = Calendar.getInstance().apply {
+                                timeInMillis = dateFilterMs ?: System.currentTimeMillis()
+                            }
+                            DatePickerDialog(
+                                ctx,
+                                { _, y, m, d ->
+                                    val c = Calendar.getInstance().apply {
+                                        set(Calendar.YEAR, y)
+                                        set(Calendar.MONTH, m)
+                                        set(Calendar.DAY_OF_MONTH, d)
+                                        set(Calendar.HOUR_OF_DAY, 0)
+                                        set(Calendar.MINUTE, 0)
+                                        set(Calendar.SECOND, 0)
+                                        set(Calendar.MILLISECOND, 0)
+                                    }
+                                    dateFilterMs = c.timeInMillis
+                                },
+                                cal.get(Calendar.YEAR),
+                                cal.get(Calendar.MONTH),
+                                cal.get(Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }
+                    )
+                }
+
+                Text(
+                    text = "Дата: $dateLabel",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -100,7 +228,7 @@ fun HistoryScreen(vm: MainViewModel) {
                     DayHeader(text = dayFmt.format(Date(dayKey)))
                 }
 
-                val expanded = (menuForId == e.id)
+                val expanded = menuForId == e.id
 
                 Box(Modifier.fillMaxWidth()) {
                     GlassCard(
@@ -108,12 +236,8 @@ fun HistoryScreen(vm: MainViewModel) {
                             .fillMaxWidth()
                             .pointerInput(e.id) {
                                 detectTapGestures(
-                                    onTap = {
-                                        // просто закрываем меню, если было открыто
-                                        menuForId = null
-                                    },
+                                    onTap = { menuForId = null },
                                     onLongPress = { pressOffsetPx ->
-                                        // ВАЖНО: корректный px -> dp через LocalDensity
                                         menuOffset = with(density) {
                                             DpOffset(
                                                 x = pressOffsetPx.x.toDp(),
@@ -126,12 +250,13 @@ fun HistoryScreen(vm: MainViewModel) {
                             }
                     ) {
                         Text(
-                            "${e.exercise} - ${e.amount}",
+                            text = "${e.exercise} - ${e.amount}",
                             color = MaterialTheme.colorScheme.onBackground,
-                            style = MaterialTheme.typography.titleMedium
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            "${timeFmt.format(Date(e.timestampMs))}  •  ${e.session ?: "Без метки"}",
+                            text = e.session ?: "Без метки",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -162,93 +287,17 @@ fun HistoryScreen(vm: MainViewModel) {
 
             if (filtered.isEmpty()) {
                 item {
-                    Text(
-                        "Нет записей по выбранным фильтрам.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    GlassCard(Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Нет записей по выбранным фильтрам.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
-
-        // ---- Нижняя панель фильтров ----
-        GlassCard(Modifier.fillMaxWidth()) {
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = exerciseFilter == "Все",
-                    onClick = { exerciseFilter = "Все" },
-                    label = { Text("Все") },
-                    colors = chipColors
-                )
-                FilterChip(
-                    selected = exerciseFilter == "Отжимания",
-                    onClick = { exerciseFilter = "Отжимания" },
-                    label = { Text("Отжимания") },
-                    colors = chipColors
-                )
-                FilterChip(
-                    selected = exerciseFilter == "Приседания",
-                    onClick = { exerciseFilter = "Приседания" },
-                    label = { Text("Приседания") },
-                    colors = chipColors
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                GlassOutlinedButton(
-                    text = "Все",
-                    modifier = Modifier.weight(1f),
-                    onClick = { dateFilterMs = null }
-                )
-
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        val cal = Calendar.getInstance().apply {
-                            timeInMillis = dateFilterMs ?: System.currentTimeMillis()
-                        }
-                        DatePickerDialog(
-                            ctx,
-                            { _, y, m, d ->
-                                val c = Calendar.getInstance().apply {
-                                    set(Calendar.YEAR, y)
-                                    set(Calendar.MONTH, m)
-                                    set(Calendar.DAY_OF_MONTH, d)
-                                    set(Calendar.HOUR_OF_DAY, 0)
-                                    set(Calendar.MINUTE, 0)
-                                    set(Calendar.SECOND, 0)
-                                    set(Calendar.MILLISECOND, 0)
-                                }
-                                dateFilterMs = c.timeInMillis
-                            },
-                            cal.get(Calendar.YEAR),
-                            cal.get(Calendar.MONTH),
-                            cal.get(Calendar.DAY_OF_MONTH)
-                        ).show()
-                    }
-                ) { Text("Выбрать") }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                "Дата: $dateLabel",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 
-    // ====== Диалог удаления ======
     if (deleteEntry != null) {
         val e = deleteEntry!!
         AlertDialog(
@@ -261,15 +310,18 @@ fun HistoryScreen(vm: MainViewModel) {
                         vm.deleteEntry(e.id)
                         deleteEntry = null
                     }
-                ) { Text("Удалить") }
+                ) {
+                    Text("Удалить")
+                }
             },
             dismissButton = {
-                TextButton(onClick = { deleteEntry = null }) { Text("Отмена") }
+                TextButton(onClick = { deleteEntry = null }) {
+                    Text("Отмена")
+                }
             }
         )
     }
 
-    // ====== Диалог редактирования ======
     if (editEntry != null) {
         val e = editEntry!!
 
@@ -288,7 +340,10 @@ fun HistoryScreen(vm: MainViewModel) {
                         singleLine = true
                     )
 
-                    Text("Метка", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "Метка",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -324,10 +379,14 @@ fun HistoryScreen(vm: MainViewModel) {
                         )
                         editEntry = null
                     }
-                ) { Text("Сохранить") }
+                ) {
+                    Text("Сохранить")
+                }
             },
             dismissButton = {
-                TextButton(onClick = { editEntry = null }) { Text("Отмена") }
+                TextButton(onClick = { editEntry = null }) {
+                    Text("Отмена")
+                }
             }
         )
     }
@@ -340,7 +399,7 @@ private fun DayHeader(text: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text,
+            text = text,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground
         )

@@ -7,11 +7,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,10 +42,15 @@ class MainActivity : ComponentActivity() {
             FitnessTrackerTheme {
 
                 var showSplash by rememberSaveable { mutableStateOf(true) }
+                var showWhatsNew by rememberSaveable { mutableStateOf(false) }
 
                 LaunchedEffect(Unit) {
                     delay(700)
                     showSplash = false
+                    showWhatsNew = AppUpdatePrefs.shouldShowWhatsNew(
+                        context = this@MainActivity,
+                        currentVersion = BuildConfig.VERSION_NAME
+                    )
                 }
 
                 if (showSplash) {
@@ -53,7 +60,6 @@ class MainActivity : ComponentActivity() {
                         val vm: MainViewModel = viewModel()
                         val nav = rememberNavController()
 
-                        // Планируем напоминания по текущим настройкам (после старта UI)
                         LaunchedEffect(Unit) {
                             vm.rescheduleReminders()
                         }
@@ -61,7 +67,7 @@ class MainActivity : ComponentActivity() {
                         val items = listOf(
                             "today" to "Сегодня",
                             "history" to "История",
-                            "badges" to "Медали",
+                            "badges" to "Сила",
                             "analytics" to "Аналитика",
                             "settings" to "Настройки"
                         )
@@ -99,10 +105,23 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 composable("today") { TodayScreen(vm) }
                                 composable("history") { HistoryScreen(vm) }
-                                composable("badges") { BadgesScreen(vm) }
+                                composable("badges") { StrengthScreen(vm) }
                                 composable("analytics") { AnalyticsScreen(vm) }
                                 composable("settings") { SettingsScreen(vm) }
                             }
+                        }
+
+                        if (showWhatsNew) {
+                            WhatsNewDialog(
+                                versionName = BuildConfig.VERSION_NAME,
+                                onDismiss = {
+                                    AppUpdatePrefs.markWhatsNewSeen(
+                                        context = this@MainActivity,
+                                        currentVersion = BuildConfig.VERSION_NAME
+                                    )
+                                    showWhatsNew = false
+                                }
+                            )
                         }
                     }
                 }
@@ -125,4 +144,34 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+@androidx.compose.runtime.Composable
+private fun WhatsNewDialog(
+    versionName: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Что нового в $versionName")
+        },
+        text = {
+            Text(
+                "🔥 Система силы\n" +
+                        "Теперь приложение повышает уровень за серию тренировок.\n\n" +
+                        "📈 Новый экран силы\n" +
+                        "Появились уровни, прогресс и путь развития.\n\n" +
+                        "📅 Обновлён главный экран\n" +
+                        "Статистика дня стала чище и понятнее.\n\n" +
+                        "📊 Улучшена аналитика\n" +
+                        "Добавлены сетка и шкала для удобного чтения графиков."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Начать")
+            }
+        }
+    )
 }

@@ -2,14 +2,13 @@ package com.andre.fitnesstracker.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val AppBackground = Color(0xFFF5F5F7)
-val CardBackground = Color(0xFFFFFFFF)
+val AppBackground = Color(0xFF0F1115)
+val CardBackground = Color(0xFF1A1D22)
 
-val TextPrimary = Color(0xFF1C1C1E)
-val TextSecondary = Color(0xFF6E6E73)
+val TextPrimary = Color(0xFFFFFFFF)
+val TextSecondary = Color(0xFFB3B3B3)
 
-val AccentPrimary = Color(0xFFFF7A59)
-val AccentSecondary = Color(0xFF7B61FF)
+val Accent = Color(0xFFFF6B4A)
+val AccentLight = Color(0xFFFF8A65)
 
-val SuccessColor = Color(0xFF34C759)
-val DividerColor = Color(0xFFE5E5EA)
+val Divider = Color(0xFF2A2A2A)

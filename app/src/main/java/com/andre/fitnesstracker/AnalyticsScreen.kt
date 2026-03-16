@@ -1,16 +1,38 @@
 package com.andre.fitnesstracker
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.andre.fitnesstracker.ui.theme.GlassCard
 import java.util.Calendar
@@ -18,32 +40,43 @@ import java.util.Calendar
 private enum class Range(val days: Int) { D7(7), D31(31), D365(365) }
 private enum class Part { ALL, MORNING, EVENING }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AnalyticsScreen(vm: MainViewModel) {
-    val ui = vm.ui.collectAsState().value
+    val ui by vm.ui.collectAsState()
+    val scrollState = rememberScrollState()
 
     var range by remember { mutableStateOf(Range.D31) }
     var exercise by remember { mutableStateOf(ui.selectedExercise) }
     var part by remember { mutableStateOf(Part.ALL) }
 
-    LaunchedEffect(ui.selectedExercise) { exercise = ui.selectedExercise }
+    val availableExercises = remember(ui.seriesMode) {
+        when (ui.seriesMode) {
+            "pushups" -> listOf("Отжимания")
+            "squats" -> listOf("Приседания")
+            else -> listOf("Отжимания", "Приседания")
+        }
+    }
+
+    LaunchedEffect(ui.selectedExercise, ui.seriesMode) {
+        exercise = when {
+            ui.selectedExercise in availableExercises -> ui.selectedExercise
+            else -> availableExercises.first()
+        }
+    }
 
     val chipColors = FilterChipDefaults.filterChipColors(
-        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
         selectedLabelColor = MaterialTheme.colorScheme.onBackground,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.25f),
+        containerColor = MaterialTheme.colorScheme.surface,
         labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // X-ось:
-    // - 7/31: список дней
-    // - год: список месяцев
     val xKeys: List<String> = remember(range) {
         if (range == Range.D365) buildLastMonths(12) else buildLastDays(range.days)
     }
 
-    val totals: List<Int> = remember(ui.entries, exercise, range, part) {
+    val totals: List<Int> = remember(ui.entries, exercise, range, part, xKeys) {
         val map = mutableMapOf<String, Int>()
         xKeys.forEach { map[it] = 0 }
 
@@ -53,7 +86,9 @@ fun AnalyticsScreen(vm: MainViewModel) {
             if (part == Part.EVENING && e.session != "Вечер") return@forEach
 
             val key = if (range == Range.D365) monthKey(e.timestampMs) else dayKey(e.timestampMs)
-            if (map.containsKey(key)) map[key] = (map[key] ?: 0) + e.amount
+            if (map.containsKey(key)) {
+                map[key] = (map[key] ?: 0) + e.amount
+            }
         }
 
         xKeys.map { k -> map[k] ?: 0 }
@@ -63,59 +98,216 @@ fun AnalyticsScreen(vm: MainViewModel) {
     val maxV = totals.maxOrNull() ?: 0
     val avg = if (totals.isEmpty()) 0.0 else sum.toDouble() / totals.size.toDouble()
 
+    val periodLabel = when (range) {
+        Range.D7 -> "7 дней"
+        Range.D31 -> "31 день"
+        Range.D365 -> "12 месяцев"
+    }
+
+    val partLabel = when (part) {
+        Part.ALL -> "Все подходы"
+        Part.MORNING -> "Утро"
+        Part.EVENING -> "Вечер"
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(
-            "Аналитика",
+            text = "Аналитика",
             style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.SemiBold
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = range == Range.D7, onClick = { range = Range.D7 }, label = { Text("7 дней") }, colors = chipColors)
-            FilterChip(selected = range == Range.D31, onClick = { range = Range.D31 }, label = { Text("31 день") }, colors = chipColors)
-            FilterChip(selected = range == Range.D365, onClick = { range = Range.D365 }, label = { Text("Год") }, colors = chipColors)
+        Text(
+            text = "Смотри динамику по упражнениям и времени суток",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = exercise,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    text = "$periodLabel - $partLabel",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    AnalyticsStat("Сумма", "$sum")
+                    AnalyticsStat(
+                        if (range == Range.D365) "Макс/мес" else "Макс/день",
+                        "$maxV"
+                    )
+                    AnalyticsStat(
+                        if (range == Range.D365) "Сред/мес" else "Сред/день",
+                        "%.1f".format(avg)
+                    )
+                }
+            }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = part == Part.ALL, onClick = { part = Part.ALL }, label = { Text("Все") }, colors = chipColors)
-            FilterChip(selected = part == Part.MORNING, onClick = { part = Part.MORNING }, label = { Text("Утро") }, colors = chipColors)
-            FilterChip(selected = part == Part.EVENING, onClick = { part = Part.EVENING }, label = { Text("Вечер") }, colors = chipColors)
+        Text(
+            text = "Период",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium
+        )
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = range == Range.D7,
+                onClick = { range = Range.D7 },
+                label = { Text("7 дней") },
+                colors = chipColors
+            )
+            FilterChip(
+                selected = range == Range.D31,
+                onClick = { range = Range.D31 },
+                label = { Text("31 день") },
+                colors = chipColors
+            )
+            FilterChip(
+                selected = range == Range.D365,
+                onClick = { range = Range.D365 },
+                label = { Text("Год") },
+                colors = chipColors
+            )
         }
 
-        Text("Упражнение", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ui.exercises.forEach { ex ->
-                FilterChip(selected = exercise == ex, onClick = { exercise = ex }, label = { Text(ex) }, colors = chipColors)
+        Text(
+            text = "Срез",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium
+        )
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = part == Part.ALL,
+                onClick = { part = Part.ALL },
+                label = { Text("Все") },
+                colors = chipColors
+            )
+            FilterChip(
+                selected = part == Part.MORNING,
+                onClick = { part = Part.MORNING },
+                label = { Text("Утро") },
+                colors = chipColors
+            )
+            FilterChip(
+                selected = part == Part.EVENING,
+                onClick = { part = Part.EVENING },
+                label = { Text("Вечер") },
+                colors = chipColors
+            )
+        }
+
+        if (ui.seriesMode == "both") {
+            Text(
+                text = "Упражнение",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Medium
+            )
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                availableExercises.forEach { ex ->
+                    FilterChip(
+                        selected = exercise == ex,
+                        onClick = { exercise = ex },
+                        label = { Text(ex) },
+                        colors = chipColors
+                    )
+                }
             }
         }
 
         GlassCard(Modifier.fillMaxWidth()) {
-            val partTitle = when (part) {
-                Part.ALL -> "Все"
-                Part.MORNING -> "Утро"
-                Part.EVENING -> "Вечер"
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Динамика",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    text = if (range == Range.D365) {
+                        "По месяцам за последний год"
+                    } else {
+                        "По дням за выбранный период"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                BarChart(
+                    values = totals,
+                    xKeys = xKeys,
+                    range = range,
+                    barColor = MaterialTheme.colorScheme.primary,
+                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                )
             }
-            Text("Сумма за период ($partTitle): $sum", color = MaterialTheme.colorScheme.onBackground)
-            Text("Максимум (${if (range == Range.D365) "за месяц" else "за день"}): $maxV", color = MaterialTheme.colorScheme.onBackground)
-            Text("Среднее (${if (range == Range.D365) "в месяц" else "в день"}): ${"%.1f".format(avg)}", color = MaterialTheme.colorScheme.onBackground)
         }
 
-        BarChart(
-            values = totals,
-            xKeys = xKeys,
-            range = range,
-            barColor = MaterialTheme.colorScheme.primary,
-            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().height(240.dp)
-        )
-
         Text(
-            "Тап по столбику добавим позже.",
+            text = "Позже сюда можно добавить детализацию по нажатию на столбик.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun AnalyticsStat(
+    title: String,
+    value: String
+) {
+    Column {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }
@@ -134,16 +326,53 @@ private fun BarChart(
     Canvas(modifier = modifier) {
         val n = values.size.coerceAtLeast(1)
 
-        // Для "Год" делаем gap меньше, чтобы было плотнее и красивее
+        val leftAxisArea = 42f
         val gap = if (range == Range.D365) 10f else 6f
         val labelArea = 28f
         val chartH = (size.height - labelArea).coerceAtLeast(1f)
-        val barW = ((size.width - gap * (n - 1)) / n).coerceAtLeast(1f)
+        val chartW = (size.width - leftAxisArea).coerceAtLeast(1f)
+        val barW = ((chartW - gap * (n - 1)) / n).coerceAtLeast(1f)
+
+        val gridLines = 4
+
+        val textPaint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            color = labelColor.copy(alpha = 0.75f).toArgb()
+            textSize = 20f
+            textAlign = android.graphics.Paint.Align.LEFT
+        }
+
+        for (i in 0..gridLines) {
+            val value = maxV * i / gridLines
+            val y = chartH - (chartH * i.toFloat() / gridLines.toFloat())
+
+            drawLine(
+                color = labelColor.copy(alpha = 0.18f),
+                start = Offset(leftAxisArea, y),
+                end = Offset(size.width, y),
+                strokeWidth = 1f
+            )
+
+            drawIntoCanvas { canvas ->
+                canvas.nativeCanvas.drawText(
+                    value.toString(),
+                    4f,
+                    y - 4f,
+                    textPaint
+                )
+            }
+        }
 
         values.forEachIndexed { i, v ->
             val h = (v.toFloat() / maxV.toFloat()) * chartH
-            val x = i * (barW + gap)
-            drawRect(color = barColor, topLeft = Offset(x, chartH - h), size = Size(barW, h))
+            val x = leftAxisArea + i * (barW + gap)
+
+            drawRoundRect(
+                color = barColor,
+                topLeft = Offset(x, chartH - h),
+                size = Size(barW, h),
+                cornerRadius = CornerRadius(8f, 8f)
+            )
         }
 
         val labels = buildXAxisLabels(xKeys, range)
@@ -155,17 +384,25 @@ private fun BarChart(
                 textSize = 22f
                 textAlign = android.graphics.Paint.Align.CENTER
             }
+
             val y = chartH + 22f
+
             labels.forEachIndexed { i, text ->
                 if (text.isNullOrBlank()) return@forEachIndexed
-                val xCenter = i * (barW + gap) + barW / 2f
-                canvas.nativeCanvas.drawText(text, xCenter, y, paint)
+
+                val xCenter = leftAxisArea + i * (barW + gap) + barW / 2f
+
+                canvas.nativeCanvas.drawText(
+                    text,
+                    xCenter,
+                    y,
+                    paint
+                )
             }
         }
     }
 }
 
-// ---------- keys ----------
 private fun dayKey(timestampMs: Long): String {
     val c = Calendar.getInstance().apply { timeInMillis = timestampMs }
     val y = c.get(Calendar.YEAR)
@@ -219,7 +456,6 @@ private fun buildLastMonths(months: Int): List<String> {
     return list
 }
 
-// ---------- labels ----------
 private fun buildXAxisLabels(xKeys: List<String>, range: Range): List<String?> =
     when (range) {
         Range.D7 -> xKeys.map { weekdayShort(it) }
@@ -228,15 +464,12 @@ private fun buildXAxisLabels(xKeys: List<String>, range: Range): List<String?> =
             if (i == 0 || i == xKeys.lastIndex || i % 5 == 0) day else null
         }
         Range.D365 -> xKeys.mapIndexed { i, key ->
-            // key = YYYY-MM
             val mm = key.takeLast(2)
-            // показываем подписи разреженно, чтобы не было каши
             if (i == 0 || i == xKeys.lastIndex || i % 2 == 0) monthShort(mm) else null
         }
     }
 
 private fun weekdayShort(key: String): String {
-    // key = YYYY-MM-DD
     val y = key.substring(0, 4).toInt()
     val m = key.substring(5, 7).toInt()
     val d = key.substring(8, 10).toInt()

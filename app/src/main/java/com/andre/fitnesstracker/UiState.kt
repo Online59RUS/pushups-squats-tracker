@@ -14,16 +14,17 @@ data class UiState(
     val goalPushups: Int = 50,
     val goalSquats: Int = 50,
 
-    // Today: выбранная дата (00:00)
+    val seriesMode: String = "both",
+
     val selectedDayMs: Long = DateUtils.startOfDayMs(System.currentTimeMillis()),
 
-    // streak
     val streakDays: Int = 0,
     val todayDone: Boolean = false,
 
-    // напоминания
     val morningHour: Int = 8,
     val morningMin: Int = 0,
     val eveningHour: Int = 21,
-    val eveningMin: Int = 0
+    val eveningMin: Int = 0,
+
+    val lastShownLevel: String? = null
 )

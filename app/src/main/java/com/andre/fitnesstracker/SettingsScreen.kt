@@ -9,14 +9,20 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -36,12 +42,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.andre.fitnesstracker.ui.theme.GlassCard
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: MainViewModel) {
     val ui by vm.ui.collectAsState()
     val ctx = LocalContext.current
+    val scrollState = rememberScrollState()
 
-    // Проверка разрешения "Будильники и напоминания" (Exact alarms)
     val alarmManager = remember { ctx.getSystemService(AlarmManager::class.java) }
     var exactAllowed by remember { mutableStateOf(true) }
 
@@ -51,9 +58,17 @@ fun SettingsScreen(vm: MainViewModel) {
         } else true
     }
 
+    val chipColors = FilterChipDefaults.filterChipColors(
+        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+        selectedLabelColor = MaterialTheme.colorScheme.onBackground,
+        containerColor = MaterialTheme.colorScheme.surface,
+        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -70,6 +85,7 @@ fun SettingsScreen(vm: MainViewModel) {
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
+
             Spacer(Modifier.height(10.dp))
 
             OutlinedTextField(
@@ -109,6 +125,63 @@ fun SettingsScreen(vm: MainViewModel) {
             )
         }
 
+        // ---- Режим серии ----
+        GlassCard(Modifier.fillMaxWidth()) {
+            Text(
+                text = "Режим серии",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Выбери, какие упражнения участвуют в серии.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = ui.seriesMode == "pushups",
+                    onClick = { vm.setSeriesMode("pushups") },
+                    label = { Text("Только отжимания") },
+                    colors = chipColors
+                )
+
+                FilterChip(
+                    selected = ui.seriesMode == "squats",
+                    onClick = { vm.setSeriesMode("squats") },
+                    label = { Text("Только приседания") },
+                    colors = chipColors
+                )
+
+                FilterChip(
+                    selected = ui.seriesMode == "both",
+                    onClick = { vm.setSeriesMode("both") },
+                    label = { Text("Оба упражнения") },
+                    colors = chipColors
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = when (ui.seriesMode) {
+                    "pushups" -> "Серия считается только по отжиманиям"
+                    "squats" -> "Серия считается только по приседаниям"
+                    else -> "Серия считается, когда выполнены оба упражнения"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         // ---- Напоминания ----
         GlassCard(Modifier.fillMaxWidth()) {
             Text(
@@ -140,7 +213,9 @@ fun SettingsScreen(vm: MainViewModel) {
                             true
                         ).show()
                     }
-                ) { Text("Изменить") }
+                ) {
+                    Text("Изменить")
+                }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -166,7 +241,9 @@ fun SettingsScreen(vm: MainViewModel) {
                             true
                         ).show()
                     }
-                ) { Text("Изменить") }
+                ) {
+                    Text("Изменить")
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -177,7 +254,6 @@ fun SettingsScreen(vm: MainViewModel) {
                 style = MaterialTheme.typography.bodySmall
             )
 
-            // Подсказка, если разрешение Exact alarms выключено
             if (!exactAllowed) {
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
@@ -218,15 +294,16 @@ fun SettingsScreen(vm: MainViewModel) {
             }
         }
 
-        // ---- Версия внизу экрана (вне карточек) ----
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Box(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Версия: ${BuildConfig.VERSION_NAME} ",
+                text = "Версия: ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

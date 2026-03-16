@@ -19,6 +19,10 @@ class UserPrefs(context: Context) {
     private val _goalSquatsFlow = MutableStateFlow(sp.getInt(KEY_GOAL_SQUATS, 50))
     val goalSquatsFlow: StateFlow<Int> = _goalSquatsFlow.asStateFlow()
 
+    private val _seriesModeFlow =
+        MutableStateFlow(sp.getString(KEY_SERIES_MODE, "both") ?: "both")
+    val seriesModeFlow: StateFlow<String> = _seriesModeFlow.asStateFlow()
+
     private val _morningHourFlow = MutableStateFlow(sp.getInt(KEY_MORNING_H, 8))
     val morningHourFlow: StateFlow<Int> = _morningHourFlow.asStateFlow()
 
@@ -46,6 +50,11 @@ class UserPrefs(context: Context) {
         _goalSquatsFlow.value = v
     }
 
+    suspend fun setSeriesMode(v: String) {
+        sp.edit().putString(KEY_SERIES_MODE, v).apply()
+        _seriesModeFlow.value = v
+    }
+
     suspend fun setMorningTime(hour: Int, minute: Int) {
         sp.edit().putInt(KEY_MORNING_H, hour).putInt(KEY_MORNING_M, minute).apply()
         _morningHourFlow.value = hour
@@ -62,6 +71,7 @@ class UserPrefs(context: Context) {
         private const val KEY_NAME = "name"
         private const val KEY_GOAL_PUSHUPS = "goal_pushups"
         private const val KEY_GOAL_SQUATS = "goal_squats"
+        private const val KEY_SERIES_MODE = "series_mode"
         private const val KEY_MORNING_H = "morning_h"
         private const val KEY_MORNING_M = "morning_m"
         private const val KEY_EVENING_H = "evening_h"

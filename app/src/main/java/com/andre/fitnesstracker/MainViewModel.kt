@@ -19,7 +19,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     init {
-        // записи
         viewModelScope.launch {
             repo.observeAll().collect { list ->
                 _ui.update { it.copy(entries = list) }
@@ -28,28 +27,65 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // имя + цели
         viewModelScope.launch {
             prefs.nameFlow.collect { name ->
                 _ui.update { it.copy(userName = name) }
             }
         }
+
         viewModelScope.launch {
             prefs.goalPushupsFlow.collect { g ->
                 _ui.update { it.copy(goalPushups = g) }
             }
         }
+
         viewModelScope.launch {
             prefs.goalSquatsFlow.collect { g ->
                 _ui.update { it.copy(goalSquats = g) }
             }
         }
 
-        // времена напоминаний
-        viewModelScope.launch { prefs.morningHourFlow.collect { h -> _ui.update { it.copy(morningHour = h) } } }
-        viewModelScope.launch { prefs.morningMinFlow.collect { m -> _ui.update { it.copy(morningMin = m) } } }
-        viewModelScope.launch { prefs.eveningHourFlow.collect { h -> _ui.update { it.copy(eveningHour = h) } } }
-        viewModelScope.launch { prefs.eveningMinFlow.collect { m -> _ui.update { it.copy(eveningMin = m) } } }
+        viewModelScope.launch {
+            prefs.seriesModeFlow.collect { mode ->
+                _ui.update { current ->
+                    val safeExercise = when (mode) {
+                        "pushups" -> "Отжимания"
+                        "squats" -> "Приседания"
+                        else -> current.selectedExercise
+                    }
+
+                    current.copy(
+                        seriesMode = mode,
+                        selectedExercise = safeExercise
+                    )
+                }
+                recomputeStreakFromEntries(_ui.value.entries)
+            }
+        }
+
+        viewModelScope.launch {
+            prefs.morningHourFlow.collect { h ->
+                _ui.update { it.copy(morningHour = h) }
+            }
+        }
+
+        viewModelScope.launch {
+            prefs.morningMinFlow.collect { m ->
+                _ui.update { it.copy(morningMin = m) }
+            }
+        }
+
+        viewModelScope.launch {
+            prefs.eveningHourFlow.collect { h ->
+                _ui.update { it.copy(eveningHour = h) }
+            }
+        }
+
+        viewModelScope.launch {
+            prefs.eveningMinFlow.collect { m ->
+                _ui.update { it.copy(eveningMin = m) }
+            }
+        }
     }
 
     private fun refreshTotals() {
@@ -65,7 +101,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setAmountText(v: String) = _ui.update { it.copy(amountText = v) }
 
     fun setSelectedDay(ms: Long) = _ui.update { it.copy(selectedDayMs = ms) }
-    fun setToday() = _ui.update { it.copy(selectedDayMs = DateUtils.startOfDayMs(System.currentTimeMillis())) }
+
+    fun setToday() =
+        _ui.update { it.copy(selectedDayMs = DateUtils.startOfDayMs(System.currentTimeMillis())) }
 
     fun setYesterday() = _ui.update {
         val todayStart = DateUtils.startOfDayMs(System.currentTimeMillis())
@@ -82,6 +120,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setGoalSquats(v: Int) {
         viewModelScope.launch { prefs.setGoalSquats(v) }
+    }
+
+    fun setSeriesMode(mode: String) {
+        viewModelScope.launch {
+            prefs.setSeriesMode(mode)
+        }
     }
 
     fun setMorningTime(hour: Int, minute: Int) {
@@ -153,9 +197,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return AchievementRules.build(exercise, total)
     }
 
-    // streak: день засчитан, если есть И отжимания И приседания в этот день (любые сессии)
+    fun currentStrengthLevel(): StrengthLevel {
+        val streakDays = _ui.value.streakDays
+        return strengthLevels.firstOrNull { streakDays in it.fromDays..it.toDays }
+            ?: strengthLevels.last()
+    }
+
+    fun currentStrengthProgress(): Pair<Int, Int> {
+        val streakDays = _ui.value.streakDays
+        val level = currentStrengthLevel()
+
+        if (level.toDays == Int.MAX_VALUE) {
+            return 1 to 1
+        }
+
+        val current = (streakDays - level.fromDays + 1).coerceAtLeast(0)
+        val target = (level.toDays - level.fromDays + 1).coerceAtLeast(1)
+
+        return current to target
+    }
+
+    fun daysToNextLevel(): Int {
+        val streakDays = _ui.value.streakDays
+        val level = currentStrengthLevel()
+
+        if (level.toDays == Int.MAX_VALUE) return 0
+
+        return (level.toDays - streakDays).coerceAtLeast(0)
+    }
+
+    fun checkLevelUp(): StrengthLevel? {
+        val level = currentStrengthLevel()
+        val last = _ui.value.lastShownLevel
+
+        if (level.name != last) {
+            _ui.update { it.copy(lastShownLevel = level.name) }
+            return level
+        }
+
+        return null
+    }
+
     private fun recomputeStreakFromEntries(entries: List<ExerciseEntry>) {
         val todayStart = DateUtils.startOfDayMs(System.currentTimeMillis())
+        val mode = _ui.value.seriesMode
 
         val byDay: Map<Long, Set<String>> = entries
             .groupBy { DateUtils.startOfDayMs(it.timestampMs) }
@@ -163,7 +248,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         fun isDayDone(dayStart: Long): Boolean {
             val set = byDay[dayStart] ?: emptySet()
-            return set.contains("Отжимания") && set.contains("Приседания")
+
+            return when (mode) {
+                "pushups" -> set.contains("Отжимания")
+                "squats" -> set.contains("Приседания")
+                else -> set.contains("Отжимания") && set.contains("Приседания")
+            }
         }
 
         var streak = 0
